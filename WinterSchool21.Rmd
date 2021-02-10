@@ -1,0 +1,387 @@
+---
+title: "Spatial Transcriptomics for Winter School"
+author: "Sami"
+date: "1/20/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+setwd("~/Documents/GitHub/ST-WS2021/")
+```
+
+#Spatial Transcriptomics -- workshop for Visium data analysis
+Welcome to the Spatial Transcriptomics workshop! 
+It is based on a previous workshop of Alma Andersson, the same one who developed the single-cell and spatial data integration tool, Stereoscope. 
+During this workshop the idea is to get familiar with computational analysis part of a Spatial Transcriptomics / Visium data. 
+
+TEXT ABOUT THE PROGRAMS AND DATA
+
+##Install packages
+
+To analyse the gene count matrices, we will use a package called STUtility. It was published 2020 by Bergenstråhle et al. BMC Genomics. 
+STUtility is based on Seurat, single-cell analysis tool, of which most of you probably have heard before. 
+In addition, STUtility depends on plethora of other packages, so installing all the packages from the scratch will take some time. 
+This code below checks that all the packages are installed and **should** install the ones missing. 
+```{r, echo = FALSE, eval = TRUE}
+# This chunk will:
+# 1. Check if a package is installed
+# 2. Install the package if it's missing
+# 3. load the package
+
+load.pkgs <- c("Seurat" = "cran",
+               "sctransform"="cran",
+               "ggplot2"="cran",
+               "png"="cran",
+               "grid"="cran",
+               "topicmodels"="cran",
+               "gridExtra" = "cran",
+               "tm" = "cran",
+               "gridExtra" = "cran",
+               "dplyr" = "cran",
+               "RColorBrewer"="cran",
+               "hdf5r"="cran"
+               )
+
+installed.pkgs <- installed.packages()[,1]
+
+for (pkg in names(load.pkgs) ) {
+  if (!(pkg %in% installed.pkgs) ) {
+    print(sprintf("Installing : %s",pkg))
+    if (load.pkgs[pkg] == "cran") {
+      install.packages(pkg)
+    } else if (load.pkgs[pkg] == "bioc") {
+          BiocManager::install(pkg)
+    }
+  }
+  do.call("library",list(pkg))
+}
+library(STutility)
+```
+
+First things first: let's discuss about the data. For this tutorial we will use publicly available data from 10x Genomics Inc. We study two sagittal sections from mouse brain. 
+ST-WS2021 we have several different files. We start with raw data. Raw data is unfiltered and contains the data from all the spots, also outside of the tissue. It includes also all the mitochondrial genes but let's get back to that a bit later. 
+
+First, let's creat a Seurat object. For that we need .h5 files which are compact gene count matrices, spotfiles which contain the positions of the tissue, imgs as bright field images from the tissue and json files as the spot coordinates. 
+In addition, we can add sample  specific metadata, like section number or slide number. 
+
+We load all this to the object using InputFromTable command:
+
+#Lateral diffusion
+```{r}
+#Collect file paths and metadata
+samples <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = "raw_feature_bc_matrix.h5", recursive = TRUE, full.names = T)
+spotfiles <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = ".csv", full.names = T)
+imgs <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = "hires_image.png", recursive = T,full.names = T)
+json <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = "json.json", full.names = T)
+section <- c("1", "2")
+slide <- c("V19L29-035", "V19L29-035")
+
+#Create table for the metadata
+infoTable <- data.frame(samples, imgs,spotfiles,json, section, slide, stringsAsFactors = F)
+
+#Load the data based on infoTable
+se <- InputFromTable(infotable = infoTable,
+                     disable.subset = T)
+
+
+
+```
+
+We can filter out some spots and genes are not meaningfull for the analysis. Commonly these genes have too low expression or they are expressed in only couple of spots. But how to choose what is good amount filtering? 
+
+Try yourself and use ST.Featureplots and Vlnplots to visualise what happens in every situation. 
+
+```{r}
+ST.FeaturePlot(se, features = c("nFeature_RNA"), dark.theme = T, cols = c("black", "darkblue", "cyan", "yellow", "red", "darkred"))
+ST.FeaturePlot(se, features = c("nCount_RNA"), dark.theme = T, cols = c("black", "darkblue", "cyan", "yellow", "red", "darkred"))
+```
+Next, let's look at the ribosomal and mitochondrial gene expression patterns on tissue level. 
+We will 
+```{r}
+mt.genes <- grep(pattern = "^mt-", x = rownames(se), value = TRUE)
+se$percent.mito <- (Matrix::colSums(se@assays$RNA@counts[mt.genes, ])/Matrix::colSums(se@assays$RNA@counts))*100
+rp.genes <- grep(pattern = "^Rpl|^Rps", x = rownames(se), value = TRUE)
+se$percent.ribo <- (Matrix::colSums(se@assays$RNA@counts[rp.genes, ])/Matrix::colSums(se@assays$RNA@counts))*100
+ST.FeaturePlot(se, features = "percent.mito", dark.theme = TRUE, cols = c("dark blue", "cyan", "yellow", "red", "dark red"))
+ST.FeaturePlot(se, features = "percent.ribo", dark.theme = TRUE, cols = c("dark blue", "cyan", "yellow", "red", "dark red"))
+
+VlnPlot(se, features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo"), ncol = 4) 
+```
+#Spots under the tissue
+
+```{r}
+
+#Load the data based on infoTable
+se_tissue <- InputFromTable(infotable = infoTable)
+
+#Load images to the object
+system.time({se_tissue <- LoadImages(object = se_tissue, verbose = T)})
+
+```
+We can visualise the distribution of the unique molecules and unique genes to help with the filtering. 
+
+```{r}
+p1 <- ggplot() +
+  geom_histogram(data = se_tissue[[]], aes(nFeature_RNA), fill = "brown", alpha = 0.7, color = "gray", bins = 50) +
+  ggtitle("Unique genes per spot")
+
+p2 <- ggplot() +
+  geom_histogram(data = se_tissue[[]], aes(nCount_RNA), fill = "brown", alpha = 0.7, color = "gray", bins = 50) +
+  ggtitle("Total counts per spots")
+
+gene_attr <- data.frame(nUMI = Matrix::rowSums(se_tissue@assays$RNA@counts), 
+                        nSpots = Matrix::rowSums(se_tissue@assays$RNA@counts > 0))
+p3 <- ggplot() +
+  geom_histogram(data = gene_attr, aes(nUMI), fill = "brown", alpha = 0.7, color = "gray", bins = 50) +
+  scale_x_log10() +
+  ggtitle("Total counts per gene (log10 scale)")
+
+p4 <- ggplot() +
+  geom_histogram(data = gene_attr, aes(nSpots), fill = "brown", alpha = 0.7, color = "gray", bins = 50) +
+  ggtitle("Total spots per gene")
+
+cowplot::plot_grid(p1, p2, p3, p4)
+```
+```{r}
+mt.genes <- grep(pattern = "^mt-", x = rownames(se_tissue), value = TRUE)
+se_tissue$percent.mito <- (Matrix::colSums(se_tissue@assays$RNA@counts[mt.genes, ])/Matrix::colSums(se_tissue@assays$RNA@counts))*100
+rp.genes <- grep(pattern = "^Rpl|^Rps", x = rownames(se_tissue), value = TRUE)
+se_tissue$percent.ribo <- (Matrix::colSums(se_tissue@assays$RNA@counts[rp.genes, ])/Matrix::colSums(se_tissue@assays$RNA@counts))*100
+ST.FeaturePlot(se_tissue, features = "percent.mito", dark.theme = TRUE, cols = c("dark blue", "cyan", "yellow", "red", "dark red"))
+ST.FeaturePlot(se_tissue, features = "percent.ribo", dark.theme = TRUE, cols = c("dark blue", "cyan", "yellow", "red", "dark red"))
+
+VlnPlot(se_tissue, features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo"), ncol = 4, pt.size = 0.05) 
+```
+#Filtering
+```{r}
+se.subset <- SubsetSTData(se.subset, expression = nFeature_RNA > 500 & percent.mito < 30)
+
+
+ST.FeaturePlot(se.subset, features = c("nFeature_RNA"), dark.theme = T, cols = c("black", "darkblue", "cyan", "yellow", "red", "darkred"))
+ST.FeaturePlot(se.subset, features = c("nCount_RNA"), dark.theme = T, cols = c("black", "darkblue", "cyan", "yellow", "red", "darkred"))
+
+```
+
+
+#Keeping only protein-coding genes
+```{r}
+ensids <- read.table(file = "mouse_genes.tsv", header = T, sep = "\t", stringsAsFactors = F)
+
+# Print available biotypes
+unique(ensids$gene_type)
+keep.genes <- subset(ensids, gene_type %in% "protein_coding")$gene_name
+
+# Subset Seurat object
+se.subset <- se.subset[intersect(rownames(se.subset), keep.genes), ]
+
+ST.FeaturePlot(se.subset, features = c("nFeature_RNA"), dark.theme = T, cols = c("black", "darkblue", "cyan", "yellow", "red", "darkred"))
+ST.FeaturePlot(se.subset, features = c("nCount_RNA"), dark.theme = T, cols = c("black", "darkblue", "cyan", "yellow", "red", "darkred"))
+
+```
+#Image processing
+
+```{r}
+
+#Load images to the object
+system.time({se <- LoadImages(object = se, verbose = T)})
+
+ImagePlot(se.subset, method = "raster", darken = TRUE, type = "raw")
+
+ST.FeaturePlot(object = se.subset, 
+               features = c("nFeature_RNA"), 
+               cols = c("dark blue", "cyan", "yellow", "red", "dark red"),
+               ncol = 2, 
+               grid.ncol = 1, 
+               dark.theme = T)
+
+FeatureOverlay(se.subset, 
+               features = "Cck", 
+               pt.size = 1.5,
+               cols = c("dark blue", "cyan", "yellow", "red", "dark red"), 
+               dark.theme = T, 
+               type = "raw")
+
+```
+#Masking 
+
+```{r}
+se.subset <- MaskImages(object = se.subset, channels.use = 2)
+ImagePlot(se.subset, ncols = 2, method = "raster", type = "masked", darken = T)
+
+se.subset <- se.subset %>% MaskImages(channels.use = 2) %>% AlignImages()
+ImagePlot(se.subset, method = "raster", darken = TRUE, type = "processed", ncols = 2)
+
+```
+
+##Normalization
+
+We normalize our data using SCTransformm here but Harmony is another normalisation technique that is widely used in the lab.
+SCtransform is an alternative to NormalizeData, FindVariableFeatures and ScaleData.
+What do you see here?
+Output format: Results in new SCT assay, counts corrected, log1p(counts) as data.
+
+Possible batch effects check:-
+Batch effects can bring unexplanable or even biased biological variations in the data.
+  - Arise from multiple reasons, like different samples, storage times, different slides or different arrays within the same     slide
+  - vars.to.regress option from the SCTransform removes these batch effects. We can state which batches to choose in this       option.
+Make sure this 'batch' information is available in the meta.data before proceeding.
+
+```{r}
+#Default normalisation without any batch effects correction
+se <- SCTransform(se)
+
+#SCTransform with batch effect correction using 'section'
+se.batch.section.cor <- SCTransform(se, vars.to.regress = "section")
+
+#SCTransform with batch effect correction using 'slide'
+se.batch.slide.cor <- SCTransform(se, vars.to.regress = "slide")
+#Ques: what happens here? 
+#Sami it doesn't seem to work...
+```
+
+##Factor Analysis and Dimensionality reduction techniques
+
+We can use factor analysis along with a variety of reduction techniques to fish out patterns of transcriptomic profiles.
+
+Try with different combinations of nfactors and RUNXXX and see what happens.
+nfactors = c(20,30)
+RUNXXX <- PCA, TSNE, ICA, UMAP
+
+```{r}
+se <- RunNMF(se, nfactors = 10)
+
+cscale <- c("darkblue", "cyan", "yellow", "red", "darkred")
+
+#Plot variable number of dimensions across the samples
+ST.DimPlot(se, 
+           dims = 1:10,
+           ncol = 2, # dimension level column setting
+           grid.ncol = 2, # Sample level column setting
+           reduction = "NMF",
+           pt.size = 1, 
+           center.zero = F, 
+           cols = cscale)
+
+
+#Print summary of most contributing genes
+print(se[["NMF"]])
+
+#Barplot of the most contributing genes
+FactorGeneLoadingPlot(se, factor = 3, dark.theme = TRUE)
+```
+
+We can also view the most variable features/genes.
+
+```{r}
+head(se@assays$SCT@var.features, 10)
+
+most.var.genes <- se@assays$SCT@var.features
+
+fts <- c("Ttr", "Hba-a1", "Ptgds")
+for (ftr in fts) {
+  p <- FeatureOverlay(se, 
+                  features = ftr, 
+                  sampleids = 1:2,
+                  cols = c("darkblue", "cyan", "yellow", "red", "darkred"),
+                  pt.size = 1.5, 
+                  pt.alpha = 0.5, 
+                  dark.theme = T, 
+                  ncols.samples = 2)
+                  print(p)
+}
+```
+
+Below is a UMAP embedding to compare the spatial distribution of a gene.
+Try with t-SNE embedding
+
+```{r}
+se <- RunUMAP(se, reduction = "NMF", dims = 1:10, n.neighbors = 10)
+
+#Gene list for plotting
+fts <- c("Ttr", "Hba-a1", "Ptgds")
+
+# Plot code for gene expression on visium coordinates
+p3 <- ST.FeaturePlot(se, features = fts, ncol = 2, grid.ncol = 1, pt.size = 1, show.sb = FALSE)
+cowplot::plot_grid(p3, ncol = 2)
+
+# Plot code for gene expression on UMAP embedding
+p.fts <- lapply(fts, function(ftr) {
+  FeaturePlot(se, features = ftr, reduction = "umap", order = TRUE)
+})
+cowplot::plot_grid(plotlist = p.fts, ncol = 2)
+```
+
+
+##Clustering 
+
+An important part of Genome Analysis, we will use the most 'spatially' contributing dimensions from factor analysis in clustering.
+
+Try with reduction = c(PCA, UMAP)
+
+```{r}
+#construct Shared Nearest Neighbor (SSN) graph
+se <- FindNeighbors(object = se, verbose = FALSE, reduction = "NMF", dims = 1:10)
+
+se <- FindClusters(object = se, verbose = FALSE)
+
+library(RColorBrewer)
+n <- 19
+qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
+col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
+
+ST.FeaturePlot(object = se, features = "seurat_clusters", dark.theme = T, cols = col_vector, pt.size = 1)
+```
+
+If clusters seem cluttered, then view each cluster using 'split.labels = T' but for only one section at a time.
+
+Try with indices = 2, for section 2/sample 2
+
+```{r}
+ST.FeaturePlot(object = se, features = "seurat_clusters", pt.size = 1, split.labels = T, indices = 1, show.sb = FALSE)
+```
+
+##Differential Expression Analysis (DEA)
+
+We can look at the most differentially expressed genes across the tissue, also termed here as Markers.
+
+ident.1 selects the cluster ID/number where we want to look at the differentially expressed genes/markers.
+
+Try with other clusters as well.
+
+```{r}
+diff.genes <- FindMarkers(se, ident.1 = 1) #this step will take a couple of minutes to finish
+head(diff.genes)
+```
+
+We can also look at the expression of one gene of interest across the 'rest' of the samples by using FeatureOverlay.
+
+Try with other genes.
+
+```{r}
+FeatureOverlay(se, features = "Nrgn", 
+              sampleids = 1:2,
+              cols = c("darkblue", "cyan", "yellow", "red", "darkred"),
+              pt.size = 1.5, 
+              pt.alpha = 0.5,
+              ncols.samples = 2)
+```
+
+##Spatial Autocorrection
+
+We can find genes with spatial patterns across the tissue. STUtility uses neighborhood networks to provide an overall expression of a gene relative to it neighborhood. Each gene's orginal expression and this new relative expression is calculated. All genes are then further ranked based on this dataframe of gene expression vectors.
+
+```{r}
+library(spdep)
+neigh.genes <- CorSpatialGenes(se)
+```
+
+View a summary of the neigh.genes
+
+```{r}
+head(neigh.genes)
+```
+
+
+
+
