@@ -1,18 +1,18 @@
 ---
 title: "Spatial Transcriptomics for Winter School"
-author: "Sami"
+author: "Sami Saarenpää and Yuvarani Masarapu"
 date: "1/20/2021"
 output: html_document
 ---
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-setwd("~/Documents/GitHub/ST-WS2021/")
+setwd("~/Documents/GitHub/WinterSchool2021/")
 ```
 
 #Spatial Transcriptomics -- workshop for Visium data analysis
 Welcome to the Spatial Transcriptomics workshop! 
-It is based on a previous workshop of Alma Andersson, the same one who developed the single-cell and spatial data integration tool, Stereoscope. 
+It is based on a previous workshop of Alma Andersson, the same person who developed the single-cell and spatial data integration tool, Stereoscope. 
 During this workshop the idea is to get familiar with computational analysis part of a Spatial Transcriptomics / Visium data. 
 
 TEXT ABOUT THE PROGRAMS AND DATA
@@ -70,10 +70,10 @@ We load all this to the object using InputFromTable command:
 #Lateral diffusion
 ```{r}
 #Collect file paths and metadata
-samples <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = "raw_feature_bc_matrix.h5", recursive = TRUE, full.names = T)
-spotfiles <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = ".csv", full.names = T)
-imgs <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = "hires_image.png", recursive = T,full.names = T)
-json <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = "json.json", full.names = T)
+samples <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = "raw_feature_bc_matrix.h5", recursive = TRUE, full.names = T)
+spotfiles <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = ".csv", full.names = T)
+imgs <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = "hires_image.jpg", recursive = T,full.names = T)
+json <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = ".json", full.names = T)
 section <- c("1", "2")
 slide <- c("V19L29-035", "V19L29-035")
 
@@ -155,7 +155,7 @@ VlnPlot(se_tissue, features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "p
 ```
 #Filtering
 ```{r}
-se.subset <- SubsetSTData(se.subset, expression = nFeature_RNA > 500 & percent.mito < 30)
+se.subset <- SubsetSTData(se_tissue, expression = nFeature_RNA > 500 & percent.mito < 30)
 
 
 ST.FeaturePlot(se.subset, features = c("nFeature_RNA"), dark.theme = T, cols = c("black", "darkblue", "cyan", "yellow", "red", "darkred"))
@@ -223,8 +223,8 @@ Output format: Results in new SCT assay, counts corrected, log1p(counts) as data
 
 Possible batch effects check:-
 Batch effects can bring unexplanable or even biased biological variations in the data.
-  - Arise from multiple reasons, like different samples, storage times, different slides or different arrays within the same     slide
-  - vars.to.regress option from the SCTransform removes these batch effects. We can state which batches to choose in this       option.
+  - Arise from multiple reasons, like different samples, storage times, different slides or different arrays within the same slide
+  - vars.to.regress option from the SCTransform removes these batch effects. We can state which batches to choose in this option.
 Make sure this 'batch' information is available in the meta.data before proceeding.
 
 ```{r}
