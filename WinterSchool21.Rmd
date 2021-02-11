@@ -85,10 +85,10 @@ We load all this to the object using InputFromTable command:
 #Loading the data
 ```{r}
 #Collect file paths and metadata
-samples <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = "raw_feature_bc_matrix.h5", recursive = TRUE, full.names = T)
-spotfiles <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = ".csv", full.names = T)
-imgs <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = "hires_image.png", recursive = T,full.names = T)
-json <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = "json.json", full.names = T)
+samples <- list.files(path = " //genomic/ws_cell_dynamics/TP-SpacialTranscriptomic/WinterSchool2021", pattern = "raw_feature_bc_matrix.h5", recursive = TRUE, full.names = T)
+spotfiles <- list.files(path = " //genomic/ws_cell_dynamics/TP-SpacialTranscriptomic/WinterSchool2021", pattern = ".csv", full.names = T)
+imgs <- list.files(path = " //genomic/ws_cell_dynamics/TP-SpacialTranscriptomic/WinterSchool2021", pattern = "hires_image.png", recursive = T,full.names = T)
+json <- list.files(path = " //genomic/ws_cell_dynamics/TP-SpacialTranscriptomic/WinterSchool2021", pattern = "json.json", full.names = T)
 section <- c("1", "2")
 slide <- c("V19L29-035", "V19L29-035")
 
@@ -496,7 +496,241 @@ neigh.genes
 ```
 #Save the object
 ```{r}
-saveRDS(se.subset, file = "se_subset.tds")
+saveRDS(se.subset, file = "se_subset.rds")
+```
+
+## Factor Analysis
+
+When clustering our spots, we will group together spots with similar expression
+profiles (they reside near each other in gene expression space). But remember
+how we in the introduction mentioned that each spot's expression profile is a
+mixture of contributions from multiple cells. Thus, it is sometimes more
+interesting to know what the constituents of these mixtures are and how they are
+distributed within the data.
+
+To approach this question, we can consider each spot as a combination of some
+latent - unobserved - factors. These factors, depending on how we design the
+model, could represent transcription programs or alternatively cell types. In
+contrast to a spot being assigned to a single cluster, it is defined by the
+composition of different contributions from respective factor. The process of
+retrieving and characterizing these factors, might be referred to as a form of
+**decomposition** or **factorization**.
+
+Such factors can be learned from the data, but also defined _a priori_; a good
+example of the latter is when single cell data is integrated with spatial data
+(next section) - we can then consider the cell types associated expression
+profiles as latent factors. However, for now, we will focus on the case when we
+do not know the character of our factors prior to the analysis.
+
+There is a plethora of different methods to conduct factor analysis or modeling
+of similar problems, some of them designed specifically with gene expression
+data in mind. Since more complex models tends to take longer time to fit and
+converge, we will use a relatively simple form of factorization called Latent
+Dirichlet Allocation (LDA) - borrowed from the field of topic modelling.
+
+LDA was first presented in 2003 (Blei et al.), the original problem it
+was designed to solve can be described as: 
+
+> "Given a corpus of 𝑀 documents, with a vocabulary consisting of 𝑉 words,
+assume each document can be assigned to one or more of 𝑇 topics. Each topic 𝑡
+is characterized by its frequency distribution over the 𝑉 words. How are the
+words distributed across the topics and how are the topics distributed across
+the documents?"
+
+If we consider this in the context of spatial transcriptomics, we can see how an
+alternative formulation could be stated as :
+
+> "Given a section with 𝑆 spots, with a total of 𝐺 genes being expressed
+across all spots, assume each spot can be assigned to one or more of 𝑃
+expression programs. Each program 𝑝 is characterized by its frequency
+distribution over the 𝐺 genes. How are the genes distributed across the
+expression programs and how are the programs distributed across the spots?"
+
+Despite being described as "simple", the LDA model takes a fairly long time to
+fit and scales poorly with the number of genes, therefore we will only use the
+top 5000 highest expressed genes (based on the raw, not normalized data).
+
+_Q7_:  Create a vector named `top.5000` that contains the names of the top 5000
+genes w.r.t. total gene expression.
+
+_Comment_: You want to use the assay "spRNA" and not "SCT" for this. This is
+because LDA operates with frequency distributions of words, computed from the
+number of times each word (here gene) occurs in every document (spot) - thus
+using normalized data wouldn't make any sense.
+
+```{r,eval = GRADE_MODE}
+# create the vector top.5000 here
+top.5000 <- order(Matrix::rowSums(GetAssayData(se.subset,assay ="RNA")),
+                  decreasing = TRUE)[1:5000]
+
+top.5000 <- rownames(se.subset)[top.5000]
+
+head(top.5000)
+
+```
+
+The next code chunk provides code that convert the data into a suitable format
+for the LDA implementation to use, and then fits the model. It uses $10$ topics,
+this number is chosen quite arbitrarily.
+
+Now, you can have a look at the code below but *DO NOT RUN IT*. The fitting
+procedure will take about 1 hour on a good computer, so to avoid you wasting
+valuable time on a slow algo - skip ahead to the next code chunk where you can
+load an already fitted model (using the code in this chunk).
+
+```{r, eval = FALSE}
+# DO NOT RUN
+
+# Code to prepare data for the LDA algorithm
+# and the actual fitting of the model
+
+# construct a Term times Document Matrix from our count data
+tdm <- as.TermDocumentMatrix(GetAssayData(subset(se.subset,features = top.5000),
+                                          assay = "RNA"),
+                             weighting = "weightTf"
+                             )
+# get frequency weights
+tdm <- weightTf(tdm)
+
+# convert Term times Document to Document times Term Matrix
+# desired input to LDA function
+dtm <- as.DocumentTermMatrix(tdm)
+                             
+# run LDA with 10 topics 
+lda.res <- LDA(dtm,
+               k = 10)
+
+
+```
+
+Run he code chunk below to load a fitted model
+
+```{r}
+
+# load an already fitted model
+
+lda.res <- readRDS("data/lda-res.Rds")
+lda.res
+```
+
+So the model has now been fitted with $10$ topics (gene expression programs). In
+contrast to the clustering - where each spot has one label (cluster id) - they
+now have a value for every topic representing the *proportion of transcripts* in
+a spot that originates from respective topic. These proportion values are found
+in the ot of the `lda.res` object.
+
+To see how the topics are spread across our spots, we use `spatial.plot` function
+to visualize our results.
+
+```{r,  spatially.fig.width=12, fig.height=10}
+
+# list to store plots
+plot.list <- list()
+# iterate over each of the ten topics
+for (topic in 1:10) {
+  # generate plot
+  plot.list[[topic]] <- spatial.plot(se,
+                                     color.vector = lda.res@gamma[,topic],
+                                     plot.title = paste("Topic",topic),
+                                     legend.title = "proportion"
+  )
+}
+  
+# arrange plots in grid and plot
+grid.arrange(grobs = plot.list,
+             ncol = 4)
+
+```
+
+**Q8**: Compute the rowsums of the `gamma` slot in `lda.res`, inspect your result and answer the following questions:
+
+1. The rowsums are all identical, what is the value that all sums share?
+
+2. *Why* do all rows sum to this value?
+
+Give your answers as comments in the code chunk below, they should be short and concise, 
+ot more tha a sentence or two.
+
+```{r}
+# Answers to Question 7
+
+# Question 7.1
+#
+#
+
+# Question 7.2
+#
+#
+
 ```
 
 
+Now what's even neater with LDA is that in addition to topic distribution among
+spots, it also fits the word (gene) distribution among topics. Meaning that we
+can see which genes that are very frequently observed (and thus charateristic)
+within each topic. More precisly the `beta` slot of our `lda.res` object holds
+the logged (normal logarithm) probabilities of a word being sampled from a
+specific topic.
+
+Topic 9 - concentrated to the CA 1-3 regions and the dentate gyrus - looks sort
+of interesting, let us therefore see what $20$ genes that are most strongly
+associated with this topic.
+
+```{r}
+
+# get the indices of the top 20 most frequent genes of topic 9
+top.topic.9 <- order(lda.res@beta[9,],decreasing = T)[1:20]
+# create a data frame with gene names and probabilities
+top.topic.9 <- data.frame(gene = lda.res@terms[top.topic.9],
+                             prob = exp(lda.res@beta[9,top.topic.9])
+                             )
+
+top.topic.9
+```
+
+If you were to run a pathway/enrichment analysis on this set of genes (i.e.,
+looking what sort of biological functions and pathways that it can be associated
+with), we'd see terms like "synapses","cell junctions","dendritic spine",
+"proton transmembrane transporter activity", etc. This makes sense since the
+regions Topic 9 is most dominant in are heavily involved in the formation and
+retreival of new memories as well as processing of neuronal signals.
+
+*Q9* : Create a data frame called `top.2.genes` with the *top 2* genes of each
+topic. This data frame should have the columns: "gene","prob" and "topic",
+containing the following information:
+
+* gene - name of the gene
+* prob - probability of being sampled from the asssociated topic
+* topic - the topic to which the gene is associated
+
+_Hint 1_: the names of the genes can be accessed by `lda.res@terms`. As you saw
+in the code chunk above.
+
+_Hint 2_: It might be a good idea to use a for loop here. However, it's not a
+must, there are multiple ways of solving this exercise!
+
+_Hint 3_: If you want append an element to a vector, you simply do 
+`my.vector <- c(my.vector,new.element)`
+
+```{r,eval = GRADE_MODE}
+
+n.topics <- 10
+prob.vec <- c()
+gene.vec <- c()
+topic.vec <- c()
+
+for (topic in 1:n.topics){
+  pos <- order(lda.res@beta[topic,],decreasing =T )[2]
+  gene.vec <- c(gene.vec,lda.res@terms[pos])
+  prob.vec <- c(prob.vec,exp(lda.res@beta[topic,pos]))
+  topic.vec <- c(topic.vec,rep(topic,2))
+}
+
+top.2 <- data.frame(gene = gene.vec,
+                    prob = prob.vec,
+                    topic = topic.vec)
+
+print(top.2)
+```
+
+## Single
