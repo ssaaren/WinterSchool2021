@@ -494,10 +494,13 @@ View a summary of the neigh.genes
 ```{r}
 neigh.genes
 ```
-#Save the object
+
 ```{r}
+#Save the object
 saveRDS(se.subset, file = "se_subset.rds")
 ```
+
+
 
 ## Factor Analysis
 
