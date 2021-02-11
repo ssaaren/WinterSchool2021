@@ -7,19 +7,28 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
-setwd("~/Documents/GitHub/ST-WS2021/")
+setwd("~/Documents/GitHub/WinterSchool2021/")
 ```
 
 #Spatial Transcriptomics -- workshop for Visium data analysis
 Welcome to the Spatial Transcriptomics workshop! 
-It is based on a previous workshop of Alma Andersson, the same one who developed the single-cell and spatial data integration tool, Stereoscope. 
-During this workshop the idea is to get familiar with computational analysis part of a Spatial Transcriptomics / Visium data. 
+It is based on a previous workshop of Alma Andersson, the same one who developed the single-cell and spatial data integration tool, Stereoscope and the materials from the publication of Bergenstråhle et al. (2020) and https://ludvigla.github.io/STUtility_web_site/.
 
-TEXT ABOUT THE PROGRAMS AND DATA
+#Introduction
+We will explore the field of Spatial Transcriptomics. Many of the ideas that you encountered when working with single cell data will be revistied but now with the advantage that we can visualize our results in the real physical space (not just UMAP or tSNE space). 
+
+The field of spatial transcriptomics has grown rapidly, and multiple techniques to obtain information of spatial gene expression exists. Some examples are : MERFISH, ISS, osmFISH, seqFISH, HDST, baristaSeq, Slide-seq, and GeoMx. We will however be focusing on spatial data generated from the _Visium_ platform (sold by 10x Genomics). Visium is the successor to the technique - somewhat
+confusingly - named Spatial Transcriptomics (commonly referred to as ST).
+
+ST was developed at SciLifeLab and presented to the world in 2016 when the publication _Visualization and analysis of gene expression in tissue sections by spatial transcriptomics_  was published in the journal Science. In December2018, 10x Genomics aquired the IP rights to the ST-technique, they then launched the Visium platform in late 2019.
+
+Both ST and Visium utilize a solid array onto which oligonucleotides with spatial barcodes have been printed at locations (spots) arranged in a regular grid. These oligonucleotides all have a poly-T sequence, making them apt to capture mRNA's by their poly-A tail. By reverse transcription, the barcodes of the oligonucleotides will be embedded in cDNA synthesized from the captured mRNA's; hence, we know at which mRNA that each transcript was captured. Once the cDNA molecules are sequenced, we can backmap them to their spatial position - using the barcodes - and by doing so obtain spatial gene expression information. The "old" ST arrays had 1000 spots printed on the array, while the newer Visium slides has 5000 spots.
+
+One *key* fact that should be emphasized is how none of these methods (ST and Visium) operate on a single cell level yet. The gene expression data associated with each spot is really *a mixture of contributions from multiple cells*, not all necessarliy of the same cell type.
 
 ##Install packages
 
-To analyse the gene count matrices, we will use a package called STUtility. It was published 2020 by Bergenstråhle et al. BMC Genomics. 
+To analyse the gene count matrices, we will use a package called STUtility. It was published 2020 by Bergenstråhle et al. 
 STUtility is based on Seurat, single-cell analysis tool, of which most of you probably have heard before. 
 In addition, STUtility depends on plethora of other packages, so installing all the packages from the scratch will take some time. 
 This code below checks that all the packages are installed and **should** install the ones missing. 
@@ -60,7 +69,7 @@ library(STutility)
 ```
 
 First things first: let's discuss about the data. For this tutorial we will use publicly available data from 10x Genomics Inc. We study two sagittal sections from mouse brain. 
-ST-WS2021 we have several different files. We start with raw data. Raw data is unfiltered and contains the data from all the spots, also outside of the tissue. It includes also all the mitochondrial genes but let's get back to that a bit later. 
+WinterSchool2021 we have several different files. We start with raw data. Raw data is unfiltered and contains the data from all the spots, also outside of the tissue. It includes also all the mitochondrial genes but let's get back to that a bit later. 
 
 First, let's creat a Seurat object. For that we need .h5 files which are compact gene count matrices, spotfiles which contain the positions of the tissue, imgs as bright field images from the tissue and json files as the spot coordinates. 
 In addition, we can add sample  specific metadata, like section number or slide number. 
@@ -70,10 +79,10 @@ We load all this to the object using InputFromTable command:
 #Lateral diffusion
 ```{r}
 #Collect file paths and metadata
-samples <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = "raw_feature_bc_matrix.h5", recursive = TRUE, full.names = T)
-spotfiles <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = ".csv", full.names = T)
-imgs <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = "hires_image.png", recursive = T,full.names = T)
-json <- list.files(path = "~/Documents/GitHub/ST-WS2021", pattern = "json.json", full.names = T)
+samples <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = "raw_feature_bc_matrix.h5", recursive = TRUE, full.names = T)
+spotfiles <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = ".csv", full.names = T)
+imgs <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = "hires_image.png", recursive = T,full.names = T)
+json <- list.files(path = "~/Documents/GitHub/WinterSchool2021", pattern = "json.json", full.names = T)
 section <- c("1", "2")
 slide <- c("V19L29-035", "V19L29-035")
 
@@ -113,25 +122,25 @@ VlnPlot(se, features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.
 ```{r}
 
 #Load the data based on infoTable
-se_tissue <- InputFromTable(infotable = infoTable)
+se.tissue <- InputFromTable(infotable = infoTable)
 
 #Load images to the object
-system.time({se_tissue <- LoadImages(object = se_tissue, verbose = T)})
+system.time({se.tissue <- LoadImages(object = se.tissue, verbose = T)})
 
 ```
 We can visualise the distribution of the unique molecules and unique genes to help with the filtering. 
 
 ```{r}
 p1 <- ggplot() +
-  geom_histogram(data = se_tissue[[]], aes(nFeature_RNA), fill = "brown", alpha = 0.7, color = "gray", bins = 50) +
+  geom_histogram(data = se.tissue[[]], aes(nFeature_RNA), fill = "brown", alpha = 0.7, color = "gray", bins = 50) +
   ggtitle("Unique genes per spot")
 
 p2 <- ggplot() +
-  geom_histogram(data = se_tissue[[]], aes(nCount_RNA), fill = "brown", alpha = 0.7, color = "gray", bins = 50) +
+  geom_histogram(data = se.tissue[[]], aes(nCount_RNA), fill = "brown", alpha = 0.7, color = "gray", bins = 50) +
   ggtitle("Total counts per spots")
 
-gene_attr <- data.frame(nUMI = Matrix::rowSums(se_tissue@assays$RNA@counts), 
-                        nSpots = Matrix::rowSums(se_tissue@assays$RNA@counts > 0))
+gene_attr <- data.frame(nUMI = Matrix::rowSums(se.tissue@assays$RNA@counts), 
+                        nSpots = Matrix::rowSums(se.tissue@assays$RNA@counts > 0))
 p3 <- ggplot() +
   geom_histogram(data = gene_attr, aes(nUMI), fill = "brown", alpha = 0.7, color = "gray", bins = 50) +
   scale_x_log10() +
@@ -144,18 +153,18 @@ p4 <- ggplot() +
 cowplot::plot_grid(p1, p2, p3, p4)
 ```
 ```{r}
-mt.genes <- grep(pattern = "^mt-", x = rownames(se_tissue), value = TRUE)
-se_tissue$percent.mito <- (Matrix::colSums(se_tissue@assays$RNA@counts[mt.genes, ])/Matrix::colSums(se_tissue@assays$RNA@counts))*100
-rp.genes <- grep(pattern = "^Rpl|^Rps", x = rownames(se_tissue), value = TRUE)
-se_tissue$percent.ribo <- (Matrix::colSums(se_tissue@assays$RNA@counts[rp.genes, ])/Matrix::colSums(se_tissue@assays$RNA@counts))*100
-ST.FeaturePlot(se_tissue, features = "percent.mito", dark.theme = TRUE, cols = c("dark blue", "cyan", "yellow", "red", "dark red"))
-ST.FeaturePlot(se_tissue, features = "percent.ribo", dark.theme = TRUE, cols = c("dark blue", "cyan", "yellow", "red", "dark red"))
+mt.genes <- grep(pattern = "^mt-", x = rownames(se.tissue), value = TRUE)
+se.tissue$percent.mito <- (Matrix::colSums(se.tissue@assays$RNA@counts[mt.genes, ])/Matrix::colSums(se.tissue@assays$RNA@counts))*100
+rp.genes <- grep(pattern = "^Rpl|^Rps", x = rownames(se.tissue), value = TRUE)
+se.tissue$percent.ribo <- (Matrix::colSums(se.tissue@assays$RNA@counts[rp.genes, ])/Matrix::colSums(se.tissue@assays$RNA@counts))*100
+ST.FeaturePlot(se.tissue, features = "percent.mito", dark.theme = TRUE, cols = c("dark blue", "cyan", "yellow", "red", "dark red"))
+ST.FeaturePlot(se.tissue, features = "percent.ribo", dark.theme = TRUE, cols = c("dark blue", "cyan", "yellow", "red", "dark red"))
 
-VlnPlot(se_tissue, features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo"), ncol = 4, pt.size = 0.05) 
+VlnPlot(se.tissue, features = c("nFeature_RNA", "nCount_RNA", "percent.mito", "percent.ribo"), ncol = 4, pt.size = 0.05) 
 ```
 #Filtering
 ```{r}
-se.subset <- SubsetSTData(se.subset, expression = nFeature_RNA > 500 & percent.mito < 30)
+se.subset <- SubsetSTData(se.tissue, expression = nFeature_RNA > 500 & percent.mito < 30)
 
 
 ST.FeaturePlot(se.subset, features = c("nFeature_RNA"), dark.theme = T, cols = c("black", "darkblue", "cyan", "yellow", "red", "darkred"))
@@ -184,7 +193,7 @@ ST.FeaturePlot(se.subset, features = c("nCount_RNA"), dark.theme = T, cols = c("
 ```{r}
 
 #Load images to the object
-system.time({se <- LoadImages(object = se, verbose = T)})
+system.time({se.subset <- LoadImages(object = se.subset, verbose = T)})
 
 ImagePlot(se.subset, method = "raster", darken = TRUE, type = "raw")
 
@@ -203,17 +212,15 @@ FeatureOverlay(se.subset,
                type = "raw")
 
 ```
-#Masking 
+#Masking and alignment
 
 ```{r}
-se.subset <- MaskImages(object = se.subset, channels.use = 2)
-ImagePlot(se.subset, ncols = 2, method = "raster", type = "masked", darken = T)
 
 se.subset <- se.subset %>% MaskImages(channels.use = 2) %>% AlignImages()
+ImagePlot(se.subset, ncols = 2, method = "raster", type = "masked", darken = T)
 ImagePlot(se.subset, method = "raster", darken = TRUE, type = "processed", ncols = 2)
 
 ```
-
 ##Normalization
 
 We normalize our data using SCTransformm here but Harmony is another normalisation technique that is widely used in the lab.
@@ -229,15 +236,11 @@ Make sure this 'batch' information is available in the meta.data before proceedi
 
 ```{r}
 #Default normalisation without any batch effects correction
-se <- SCTransform(se)
+se.subset <- SCTransform(se.subset)
 
-#SCTransform with batch effect correction using 'section'
-se.batch.section.cor <- SCTransform(se, vars.to.regress = "section")
+#SCTransform with batch effect correction using 'section' and 'nFeature_RNA'
+se.batch.section.cor <- SCTransform(se.subset, vars.to.regress = c("section", "nFeature_RNA"))
 
-#SCTransform with batch effect correction using 'slide'
-se.batch.slide.cor <- SCTransform(se, vars.to.regress = "slide")
-#Ques: what happens here? 
-#Sami it doesn't seem to work...
 ```
 
 ##Factor Analysis and Dimensionality reduction techniques
@@ -249,12 +252,12 @@ nfactors = c(20,30)
 RUNXXX <- PCA, TSNE, ICA, UMAP
 
 ```{r}
-se <- RunNMF(se, nfactors = 10)
+se.subset <- RunNMF(se.subset, nfactors = 10)
 
 cscale <- c("darkblue", "cyan", "yellow", "red", "darkred")
 
 #Plot variable number of dimensions across the samples
-ST.DimPlot(se, 
+ST.DimPlot(se.subset, 
            dims = 1:10,
            ncol = 2, # dimension level column setting
            grid.ncol = 2, # Sample level column setting
@@ -265,22 +268,22 @@ ST.DimPlot(se,
 
 
 #Print summary of most contributing genes
-print(se[["NMF"]])
+print(se.subset[["NMF"]])
 
 #Barplot of the most contributing genes
-FactorGeneLoadingPlot(se, factor = 3, dark.theme = TRUE)
+FactorGeneLoadingPlot(se.subset, factor = 3, dark.theme = TRUE)
 ```
 
 We can also view the most variable features/genes.
 
 ```{r}
-head(se@assays$SCT@var.features, 10)
+head(se.subset@assays$SCT@var.features, 10)
 
-most.var.genes <- se@assays$SCT@var.features
+most.var.genes <- se.subset@assays$SCT@var.features
 
 fts <- c("Ttr", "Hba-a1", "Ptgds")
 for (ftr in fts) {
-  p <- FeatureOverlay(se, 
+  p <- FeatureOverlay(se.subset, 
                   features = ftr, 
                   sampleids = 1:2,
                   cols = c("darkblue", "cyan", "yellow", "red", "darkred"),
@@ -296,18 +299,18 @@ Below is a UMAP embedding to compare the spatial distribution of a gene.
 Try with t-SNE embedding
 
 ```{r}
-se <- RunUMAP(se, reduction = "NMF", dims = 1:10, n.neighbors = 10)
+se.subset <- RunUMAP(se.subset, reduction = "NMF", dims = 1:10, n.neighbors = 10)
 
 #Gene list for plotting
 fts <- c("Ttr", "Hba-a1", "Ptgds")
 
 # Plot code for gene expression on visium coordinates
-p3 <- ST.FeaturePlot(se, features = fts, ncol = 2, grid.ncol = 1, pt.size = 1, show.sb = FALSE)
+p3 <- ST.FeaturePlot(se.subset, features = fts, ncol = 2, grid.ncol = 1, pt.size = 1, show.sb = FALSE)
 cowplot::plot_grid(p3, ncol = 2)
 
 # Plot code for gene expression on UMAP embedding
 p.fts <- lapply(fts, function(ftr) {
-  FeaturePlot(se, features = ftr, reduction = "umap", order = TRUE)
+  FeaturePlot(se.subset, features = ftr, reduction = "umap", order = TRUE)
 })
 cowplot::plot_grid(plotlist = p.fts, ncol = 2)
 ```
@@ -321,16 +324,16 @@ Try with reduction = c(PCA, UMAP)
 
 ```{r}
 #construct Shared Nearest Neighbor (SSN) graph
-se <- FindNeighbors(object = se, verbose = FALSE, reduction = "NMF", dims = 1:10)
+se.subset <- FindNeighbors(object = se.subset, verbose = FALSE, reduction = "NMF", dims = 1:10)
 
-se <- FindClusters(object = se, verbose = FALSE)
+se.subset <- FindClusters(object = se.subset, verbose = FALSE)
 
 library(RColorBrewer)
 n <- 19
 qual_col_pals = brewer.pal.info[brewer.pal.info$category == 'qual',]
 col_vector = unlist(mapply(brewer.pal, qual_col_pals$maxcolors, rownames(qual_col_pals)))
 
-ST.FeaturePlot(object = se, features = "seurat_clusters", dark.theme = T, cols = col_vector, pt.size = 1)
+ST.FeaturePlot(object = se.subset, features = "seurat_clusters", dark.theme = T, cols = col_vector, pt.size = 1)
 ```
 
 If clusters seem cluttered, then view each cluster using 'split.labels = T' but for only one section at a time.
@@ -338,7 +341,7 @@ If clusters seem cluttered, then view each cluster using 'split.labels = T' but 
 Try with indices = 2, for section 2/sample 2
 
 ```{r}
-ST.FeaturePlot(object = se, features = "seurat_clusters", pt.size = 1, split.labels = T, indices = 1, show.sb = FALSE)
+ST.FeaturePlot(object = se.subset, features = "seurat_clusters", pt.size = 1, split.labels = T, indices = 1, show.sb = FALSE)
 ```
 
 ##Differential Expression Analysis (DEA)
@@ -350,7 +353,7 @@ ident.1 selects the cluster ID/number where we want to look at the differentiall
 Try with other clusters as well.
 
 ```{r}
-diff.genes <- FindMarkers(se, ident.1 = 1) #this step will take a couple of minutes to finish
+diff.genes <- FindMarkers(se.subset, ident.1 = 1) #this step will take a couple of minutes to finish
 head(diff.genes)
 ```
 
@@ -359,7 +362,7 @@ We can also look at the expression of one gene of interest across the 'rest' of 
 Try with other genes.
 
 ```{r}
-FeatureOverlay(se, features = "Nrgn", 
+FeatureOverlay(se.subset, features = "Nrgn", 
               sampleids = 1:2,
               cols = c("darkblue", "cyan", "yellow", "red", "darkred"),
               pt.size = 1.5, 
@@ -373,7 +376,7 @@ We can find genes with spatial patterns across the tissue. STUtility uses neighb
 
 ```{r}
 library(spdep)
-neigh.genes <- CorSpatialGenes(se)
+neigh.genes <- CorSpatialGenes(se.subset)
 ```
 
 View a summary of the neigh.genes
