@@ -1,6 +1,6 @@
 ---
 title: "Spatial Transcriptomics for Winter School"
-author: "Sami"
+author: "Sami Saarenpää and Yuvarani Masarapu"
 date: "1/20/2021"
 output: html_document
 ---
@@ -11,8 +11,11 @@ setwd("~/Documents/GitHub/WinterSchool2021/")
 ```
 
 #Spatial Transcriptomics -- workshop for Visium data analysis
-Welcome to the Spatial Transcriptomics workshop! 
+Welcome to the Spatial Transcriptomics workshop!
 It is based on a previous workshop of Alma Andersson, the same one who developed the single-cell and spatial data integration tool, Stereoscope and the materials from the publication of Bergenstråhle et al. (2020) and https://ludvigla.github.io/STUtility_web_site/.
+It is based on a previous workshop of Alma Andersson, the same person who developed the single-cell and spatial data integration tool, Stereoscope. 
+During this workshop the idea is to get familiar with computational analysis part of a Spatial Transcriptomics / Visium data. 
+
 
 #Introduction
 We will explore the field of Spatial Transcriptomics. Many of the ideas that you encountered when working with single cell data will be revistied but now with the advantage that we can visualize our results in the real physical space (not just UMAP or tSNE space). 
@@ -230,8 +233,8 @@ Output format: Results in new SCT assay, counts corrected, log1p(counts) as data
 
 Possible batch effects check:-
 Batch effects can bring unexplanable or even biased biological variations in the data.
-  - Arise from multiple reasons, like different samples, storage times, different slides or different arrays within the same     slide
-  - vars.to.regress option from the SCTransform removes these batch effects. We can state which batches to choose in this       option.
+  - Arise from multiple reasons, like different samples, storage times, different slides or different arrays within the same slide
+  - vars.to.regress option from the SCTransform removes these batch effects. We can state which batches to choose in this option.
 Make sure this 'batch' information is available in the meta.data before proceeding.
 
 ```{r}
