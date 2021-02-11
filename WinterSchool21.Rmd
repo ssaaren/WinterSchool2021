@@ -553,22 +553,17 @@ Despite being described as "simple", the LDA model takes a fairly long time to
 fit and scales poorly with the number of genes, therefore we will only use the
 top 5000 highest expressed genes (based on the raw, not normalized data).
 
-_Q7_:  Create a vector named `top.5000` that contains the names of the top 5000
+*Q:*  Create a vector named `top.5000` that contains the names of the top 5000
 genes w.r.t. total gene expression.
 
-_Comment_: You want to use the assay "spRNA" and not "SCT" for this. This is
+_Comment_: You want to use the assay "RNA" and not "SCT" for this. This is
 because LDA operates with frequency distributions of words, computed from the
 number of times each word (here gene) occurs in every document (spot) - thus
 using normalized data wouldn't make any sense.
 
 ```{r,eval = GRADE_MODE}
 # create the vector top.5000 here
-top.5000 <- order(Matrix::rowSums(GetAssayData(se.subset,assay ="RNA")),
-                  decreasing = TRUE)[1:5000]
 
-top.5000 <- rownames(se.subset)[top.5000]
-
-head(top.5000)
 
 ```
 
@@ -612,7 +607,7 @@ Run he code chunk below to load a fitted model
 
 # load an already fitted model
 
-lda.res <- readRDS("data/lda-res.Rds")
+lda.res <- readRDS("lda-res.Rds")
 lda.res
 ```
 
@@ -622,8 +617,6 @@ now have a value for every topic representing the *proportion of transcripts* in
 a spot that originates from respective topic. These proportion values are found
 in the ot of the `lda.res` object.
 
-To see how the topics are spread across our spots, we use `spatial.plot` function
-to visualize our results.
 
 ```{r,  spatially.fig.width=12, fig.height=10}
 
@@ -632,7 +625,7 @@ plot.list <- list()
 # iterate over each of the ten topics
 for (topic in 1:10) {
   # generate plot
-  plot.list[[topic]] <- spatial.plot(se,
+  plot.list[[topic]] <- ST.FeaturePlot(se.subset,
                                      color.vector = lda.res@gamma[,topic],
                                      plot.title = paste("Topic",topic),
                                      legend.title = "proportion"
@@ -645,27 +638,11 @@ grid.arrange(grobs = plot.list,
 
 ```
 
-**Q8**: Compute the rowsums of the `gamma` slot in `lda.res`, inspect your result and answer the following questions:
+*Q:* Compute the rowsums of the `gamma` slot in `lda.res`, inspect your result and answer the following questions:
 
 1. The rowsums are all identical, what is the value that all sums share?
 
 2. *Why* do all rows sum to this value?
-
-Give your answers as comments in the code chunk below, they should be short and concise, 
-ot more tha a sentence or two.
-
-```{r}
-# Answers to Question 7
-
-# Question 7.1
-#
-#
-
-# Question 7.2
-#
-#
-
-```
 
 
 Now what's even neater with LDA is that in addition to topic distribution among
@@ -698,7 +675,7 @@ with), we'd see terms like "synapses","cell junctions","dendritic spine",
 regions Topic 9 is most dominant in are heavily involved in the formation and
 retreival of new memories as well as processing of neuronal signals.
 
-*Q9* : Create a data frame called `top.2.genes` with the *top 2* genes of each
+*Q:* Create a data frame called `top.2.genes` with the *top 2* genes of each
 topic. This data frame should have the columns: "gene","prob" and "topic",
 containing the following information:
 
@@ -716,24 +693,195 @@ _Hint 3_: If you want append an element to a vector, you simply do
 `my.vector <- c(my.vector,new.element)`
 
 ```{r,eval = GRADE_MODE}
-
-n.topics <- 10
-prob.vec <- c()
-gene.vec <- c()
-topic.vec <- c()
-
-for (topic in 1:n.topics){
-  pos <- order(lda.res@beta[topic,],decreasing =T )[2]
-  gene.vec <- c(gene.vec,lda.res@terms[pos])
-  prob.vec <- c(prob.vec,exp(lda.res@beta[topic,pos]))
-  topic.vec <- c(topic.vec,rep(topic,2))
-}
-
-top.2 <- data.frame(gene = gene.vec,
-                    prob = prob.vec,
-                    topic = topic.vec)
-
-print(top.2)
+#Write your code here
 ```
 
-## Single
+## Single Cell Integration
+
+The idea of factor decompisition is attractive, but there are still some
+challenges to this approach. The factors (what we referred to as topics before,
+factor is a more general term), do not necessarily represent specific cell types
+and we have no immediate biological interpretation of them.
+
+What if we wanted to where a specific type of Neurons or Astrocytes (common cell
+types in the brain) are located in our spatial data; then we would have to hope
+that some of our factors correspond to these types (which there is no guarantee
+of) and then try to figure out which factors that would be. Not the most robust
+approach, right?
+
+A solution this problem is to use a form of guided factor decomposition, where
+we already know our factors but are interested how they are distributed across
+the spots. In the case of localizing cell types, these factors would be
+expression profiles from each individual cell type that we are interested in.
+But from where would be obtain such information? The answer comes in the form of
+a different type of data, namely _single cell RNA-seq_. 
+
+In single cell experiments, each data point corresponds to one individual cell
+(once duoublets have been removed). This means that if we assign an identity
+(e.g., cell type or cluster), we can learn the expresion profiles and then
+deconvolve our spatial data with them.
+
+Multiple strategies exists to "map" single cell information onto the spatial
+data, but we will use output from a tool called `stereoscope` (from the paper
+_"single-cell and spatial transcriptomics enables probabilistic inference of
+cell type topography"_ in Nature Communications Biology), the software is found
+at [github](https://github.com/almaan/stereoscope). In short this method models
+both single cell and spatial data as _Negative Binomial_ (NB) distributed, then
+for every gene infers the paramters of each cell type's distribution, to finally
+find the optimal combination of cell types in each spot based on Maximum a
+Posteriori estimation.
+
+To map cell types from single cell data onto the tissue, we need a good single
+cell data set which is at least _somewhat similar_ to our spatial data, i.e.
+where we expect the same set of cell types to be present in both data sets.
+
+Fortunately for us, there is a website called `mousebrain.org` where *a lot* of
+single cell data from the mouse brain is avialable. One of the single cell data
+sets (from the hippocampal region) is visualized (in gtSNE-space, similar to our
+UMAP-embedings). In the letter+number combinations, the letter indicates cell
+type identity of the cluster while the number indicates different subtypes of the
+broader cell type classes. The letters are to be interpreted accordingly:
+
+* N - Neurons
+* A - Astrocytes 
+* V - Vascular cells
+* I - Immune cells
+* O - Oligodendrocytes
+* Ep - Ependymal cells
+* Ex - Excluded from single cell study
+
+![Single Cell in gtSNE-space with annotated clusters](stereoscope-cluster-small.png)
+
+Now `stereoscope` is a probabilistic model that takes quite a lot of time to
+fit, and you usually need GPU resources for it to run in reasonable time.
+Therefore you will load the output of `stereoscope` when applying it to the
+aforemention single cell data set and the section
+
+```{r}
+# Load stereoscope analysis results
+
+# get data from file
+stsc <- read.table("stereoscope-results.tsv",
+                   sep = '\t',
+                   row.names = 1,
+                   header = 1)
+# transpose to have features as rows and spots as columns
+stsc <- t(stsc)
+# ad a new assay called stereoscope to our se object
+se[["stereoscope"]] <- CreateAssayObject(counts = stsc)
+
+# set the default assay to stereoscope
+DefaultAssay(se) <- "stereoscope"
+# inspect data
+GetAssayData(se)[1:5,1:5]
+
+```
+
+The values in the output from `stereoscope` represent proportion values, that
+is: the proportion of cells at each spot that is estimated to belong to a
+certain cell type. The cell types present in our data are:
+
+```{r}
+
+cat(paste(rownames(se.subset), collapse = ", "))
+
+```
+
+Now how about having a look at the spatial distribution of the celltypes:
+
+* Ependymal-47
+* Neurons-27
+* Neurons-59
+
+our beloved `spatial.plot` comes in handy again
+
+```{r}
+
+# specify cell types to plot
+plot.types <- c("Ependymal-47",
+                "Neurons-27",
+                "Neurons-59")
+# list to hold our plots
+plot.list <- list()
+
+# iterate over each specified cell type
+for (cell.type in plot.types){
+  # get vector of cell type proportion values
+  color.vector <- GetAssayData(se.subset)[cell.type,]
+  # generate plot
+  plot.list[[cell.type]] <- ST.FeaturePlot(se.subset
+                            )
+  
+}
+# arrange plots in grid
+grid.arrange(grobs = plot.list,
+             ncol = 3)
+
+
+```
+
+So now we know how these 3 cell types localize in the tissue, but with 56 types
+in total it can be a bit hard get a comprehensive overview of all the types.
+Especially if we want to start assess paterns of interaction and
+co-localization, which is often of great interest to know. To exemplify, if we
+were to plot every pair of cell types in order to see if they had similar
+spatial distributions, we have to look through $56!/(54!2!) = 1540$ pairs...
+which is in the upper bounds of "quite a lot".
+
+In order to condense the rich information that the single cell mapping has given
+us, we can instead look at the (Pearson) correlation of the proportion values
+between different cell types. This will tell us which cell types that have
+similar spatial distributions (co-localizing) as well as which types that tend
+to populate different regions.
+
+We will compute these correlation values - cast as a correlation matrix - and
+then visualize them in a heatmap.
+
+
+```{r, fig.width=10,fig.height=10}
+# generate a color palette
+color.pal <- rev(colorRampPalette(brewer.pal(11,"RdBu"))(nrow(se)))
+# compute pearson correlation of cell types across spots
+cors <- cors <- GetAssayData(se) %>%
+  as.matrix() %>%
+  t() %>% 
+  cor()
+# set diagonal to NA
+diag(cors) <- NA
+# generate heatmap and plot it
+heatmap(cors,
+        col = color.pal,
+        scale = "none",
+        verbose = F,
+        breaks=seq(-1, 1, length.out=length(color.pal) +1)
+        )
+```
+
+
+From this we can see that the celltypes "Neurons-10" and "Neurons-15" seem to
+have a high degree of co-localization, among many other pairs. To assess whether
+this makes sense we can plot their spatial distribution using `spatial.plot`.
+
+*Q10*: Plot the spatial distribution of the two cell types "Neurons-10" and
+"Neurons-15", like we did for the cell types "Ependymal-47", "Neurons-27" and
+"Neurons-59"; you are welcome to take inspiration from the code used before.
+
+```{r,eval =GRADE_MODE}
+
+# Write the code to plot the spatial distribution of
+# the cell types Neurons-10 and Neurons-15 here
+
+plot.types <- c("Neurons-15","Neurons-10")
+plot.list <- list()
+
+for (cell.type in plot.types){
+  color.vector <- GetAssayData(se.subset)[cell.type,]
+  plot.list[[cell.type]] <- ST.FeaturePlot(se
+                            )
+  
+}
+
+grid.arrange(grobs = plot.list,
+              ncol = 2)
+```
+
